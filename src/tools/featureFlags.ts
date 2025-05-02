@@ -2,6 +2,41 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { ldRequest } from '../api.js';
 
+interface FeatureFlag {
+  key: string;
+  name: string;
+  description?: string;
+  kind: string;
+  temporary?: boolean;
+  _maintainer?: { name: string };
+  _tags?: string[];
+  variations?: unknown[];
+  defaults?: Record<string, unknown>;
+  _links?: Record<string, unknown>;
+  _archived?: boolean;
+  clientSideAvailability?: { usingMobileKey?: boolean };
+  _creationDate?: string;
+  _contexts?: unknown[];
+  environments?: Record<string, unknown>;
+}
+
+interface FlagStatus {
+  name?: string;
+  _status?: Record<string, unknown>;
+  _lastRequested?: string;
+  on?: boolean;
+  _archived?: boolean;
+  rules?: unknown[];
+  fallthrough?: unknown;
+  offVariation?: unknown;
+  prerequisites?: unknown[];
+  environments?: Record<string, FlagStatus>;
+}
+
+interface FlagsResponse {
+  items?: FeatureFlag[];
+}
+
 export function registerFeatureFlagTools(server: McpServer) {
   // Tool to list feature flags in a project
   server.tool('listFeatureFlags', {
@@ -12,35 +47,19 @@ export function registerFeatureFlagTools(server: McpServer) {
     tag: z.string().optional().describe('Filter by tag'),
   }, async ({ projectKey, query, limit, offset, tag }, extra) => {
     try {
-      // Build the endpoint according to the API documentation
-      // Base endpoint: /flags/{projectKey}
       let endpoint = `/flags/${projectKey}`;
-      
-      // Add query parameters
       const queryParams = [];
       
-      if (limit) {
-        queryParams.push(`limit=${limit}`);
-      }
+      if (limit) queryParams.push(`limit=${limit}`);
+      if (offset) queryParams.push(`offset=${offset}`);
+      if (query) queryParams.push(`filter=${encodeURIComponent(query)}`);
+      if (tag) queryParams.push(`tag=${encodeURIComponent(tag)}`);
       
-      if (offset) {
-        queryParams.push(`offset=${offset}`);
-      }
-      
-      if (query) {
-        queryParams.push(`filter=${encodeURIComponent(query)}`);
-      }
-      
-      if (tag) {
-        queryParams.push(`tag=${encodeURIComponent(tag)}`);
-      }
-      
-      // Append query parameters if any
       if (queryParams.length > 0) {
         endpoint += `?${queryParams.join('&')}`;
       }
       
-      const flags = await ldRequest(endpoint);
+      const flags = await ldRequest(endpoint) as FlagsResponse;
       
       return {
         content: [
@@ -50,7 +69,7 @@ export function registerFeatureFlagTools(server: McpServer) {
           },
           {
             type: 'text',
-            text: JSON.stringify(flags.items?.map((flag: any) => ({
+            text: JSON.stringify(flags.items?.map((flag: FeatureFlag) => ({
               key: flag.key,
               name: flag.name,
               description: flag.description || '',
@@ -71,12 +90,12 @@ export function registerFeatureFlagTools(server: McpServer) {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
       return {
         content: [
           {
             type: 'text',
-            text: `Error fetching feature flags for project "${projectKey}": ${error.message}`,
+            text: `Error fetching feature flags for project "${projectKey}": ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -89,7 +108,7 @@ export function registerFeatureFlagTools(server: McpServer) {
     flagKey: z.string().describe('The key of the feature flag to retrieve'),
   }, async ({ projectKey, flagKey }, extra) => {
     try {
-      const flag = await ldRequest(`/flags/${projectKey}/${flagKey}`);
+      const flag = await ldRequest(`/flags/${projectKey}/${flagKey}`) as FeatureFlag;
       
       const flagData = {
         key: flag.key,
@@ -100,7 +119,7 @@ export function registerFeatureFlagTools(server: McpServer) {
         tags: flag._tags || [],
         maintainer: flag._maintainer?.name || '',
         creationDate: flag._creationDate,
-        version: flag.version,
+        version: (flag as any).version,
         defaults: flag.defaults,
         clientSideAvailability: flag.clientSideAvailability,
       };
@@ -117,12 +136,12 @@ export function registerFeatureFlagTools(server: McpServer) {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
       return {
         content: [
           {
             type: 'text',
-            text: `Error fetching feature flag "${flagKey}" in project "${projectKey}": ${error.message}`,
+            text: `Error fetching feature flag "${flagKey}" in project "${projectKey}": ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -141,7 +160,7 @@ export function registerFeatureFlagTools(server: McpServer) {
         endpoint += `/environments/${environmentKey}`;
       }
       
-      const status = await ldRequest(endpoint);
+      const status = await ldRequest(endpoint) as FlagStatus;
       
       if (environmentKey) {
         const statusData = {
@@ -169,12 +188,12 @@ export function registerFeatureFlagTools(server: McpServer) {
           ],
         };
       } else {
-        const statusData = Object.entries(status.environments || {}).map(([envKey, env]: [string, any]) => ({
+        const statusData = Object.entries(status.environments || {}).map(([envKey, env]) => ({
           environmentKey: envKey,
-          environmentName: env.name,
-          enabled: env.on,
-          lastRequested: env._lastRequested,
-          status: env._status || {},
+          environmentName: (env as FlagStatus).name,
+          enabled: (env as FlagStatus).on,
+          lastRequested: (env as FlagStatus)._lastRequested,
+          status: (env as FlagStatus)._status || {},
         }));
         
         return {
@@ -190,12 +209,12 @@ export function registerFeatureFlagTools(server: McpServer) {
           ],
         };
       }
-    } catch (error: any) {
+    } catch (error) {
       return {
         content: [
           {
             type: 'text',
-            text: `Error fetching status for feature flag "${flagKey}": ${error.message}`,
+            text: `Error fetching status for feature flag "${flagKey}": ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

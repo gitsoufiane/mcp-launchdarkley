@@ -9,7 +9,11 @@
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js"
   },
-  "keywords": ["launchdarkly", "mcp", "feature-flags"],
+  "keywords": [
+    "launchdarkly",
+    "mcp",
+    "feature-flags"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -20,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }
 }
